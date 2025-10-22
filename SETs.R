@@ -79,3 +79,20 @@ a
 
 vline_data <- data.frame(site_name = c("EC", "WO"), xintercept = 2017)
 
+twenty13wo <- set_master %>%
+  filter(Year == 2020 & site_name == "WO")
+
+# Create the dot plot
+ b = ggplot(twenty13wo, aes(x = factor(Pin), y = `Height_Adj (mm)`, color = Station)) +
+  geom_point() + scale_color_manual(values = station_colors) +
+  geom_text(aes(label = Obstruction), vjust = -1, size = 3) +
+  labs(
+    title = "Height Adjustment with Obstruction Codes",
+    x = "Pin Number",
+    y = "Height"
+  ) +
+  theme_minimal() 
+
+ b
+station_colors = c("A"= "blue", "B" = "red", "C" = 'green4')
+ 
