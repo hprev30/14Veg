@@ -139,10 +139,18 @@ true_elev <- bmelev %>%
   mutate(true_elevation = Elevation + voffset - `Height_Adj (mm)`)
 
 #####taking yearly averages of each site and station------
-average_heights <- true_elev %>%
+average_heights <- true_elev2 %>%
   group_by(Year, Site, Station) %>%
-  summarise(avg_height = mean(true_elevation, na.rm = TRUE),
-            se_height = sd(true_elevation, na.rm = TRUE) / sqrt(sum(!is.na(true_elevation)))) %>%
+  summarise(avg_height = mean(elev_diff, na.rm = TRUE),
+            se_height = sd(elev_diff, na.rm = TRUE) / sqrt(sum(!is.na(true_elevation)))) %>%
+  ungroup()
+
+true_elev2 <- true_elev %>%
+  group_by(Site, Station, Degrees, Pin) %>%
+  mutate(
+    elev_2014 = true_elevation[Year == 2014][1],   # 2014 value for this Station/Pin
+    elev_diff = elev_2014 - true_elevation       # difference from 2014
+  ) %>%
   ungroup()
 
 
@@ -215,7 +223,7 @@ hi.plot <- ggplot(average_heights, aes(x = Year, y = avg_height, color = Station
   labs(title = "Hat Island Annual Average Elevation Change",      
        x = "Year", 
        y = "Elevation (mm)") +
-  theme_minimal(base_size = 14) +                 
+  theme_minimal(base_size = 14) + facet_wrap( ~Site) +                
   theme(
     panel.grid = element_blank(),                 # remove grid
     plot.title = element_text(hjust = 0.5),      # center title
