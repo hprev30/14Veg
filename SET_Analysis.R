@@ -6,6 +6,7 @@ install.packages('patchwork')
 install.packages("officer")
 install.packages("flextable")
 install.packages("gratia")
+install.packages("strucchange")
 
 #####loading packages-----
 library(readr)
@@ -21,6 +22,7 @@ library(patchwork)
 library(officer)
 library(flextable)
 library(gratia)
+library(strucchange)
 
 #####loading in datasets-----
 
@@ -128,7 +130,7 @@ fall_set_final <- merged_set %>%
 
 #####colors for visuals-----
 
-station_colors = c("A"= "blue", "B" = "red", "C" = 'green4')
+station_colors = c("A"= "blue", "B" = "orange3", "C" = 'green4')
 site_colors = c("WO" = "blue", "EC" = 'cyan3', "HI" = 'red', "MC" = 'green4', "PI" = "purple", "PC" = "black")
 
 #####converting to true elevation----
@@ -158,12 +160,20 @@ true_elev2 <- true_elev %>%
 average_heights$Station <- as.factor(average_heights$Station)
 wo <- average_heights %>%
   filter(trimws(Site) == "WO")
+woc <- average_heights %>%
+  filter(trimws(Site) == "WO" & Station == "C")
 pi <- average_heights %>%
   filter(trimws(Site) == "PI")
 hi <- average_heights %>%
   filter(trimws(Site) == "HI")
 ec <- average_heights %>%
   filter(trimws(Site) == "EC")
+eca <- average_heights %>%
+  filter(trimws(Site) == "EC" & Station == "A")
+ecb <- average_heights %>%
+  filter(trimws(Site) == "EC" & Station == "B")
+ecc <- average_heights %>%
+  filter(trimws(Site) == "EC" & Station == "C")
 pc <- average_heights %>%
   filter(trimws(Site) == "PC")
 mc <- average_heights %>%
@@ -220,15 +230,16 @@ hi.plot <- ggplot(average_heights, aes(x = Year, y = avg_height, color = Station
   geom_smooth(method = "gam", formula = y ~ s(x, k=3), se = TRUE, color = "black") + # one GAM
   scale_color_manual(values = station_colors) +        
   scale_x_continuous(breaks = seq(min(average_heights$Year), max(average_heights$Year), by = 1)) + 
-  labs(title = "Hat Island Annual Average Elevation Change",      
+  labs(title = "Annual Average Elevation Change",      
        x = "Year", 
        y = "Elevation (mm)") +
-  theme_minimal(base_size = 14) + facet_wrap( ~Site) +                
+  theme_minimal(base_size = 14) + facet_wrap(~ Site) +                
   theme(
     panel.grid = element_blank(),                 # remove grid
     plot.title = element_text(hjust = 0.5),      # center title
     axis.line = element_line(color = "black"),   # add axes lines
-    axis.ticks = element_line(color = "black")   # optional: black tick marks
+    axis.ticks = element_line(color = "black"),
+    axis.text.x = element_text(angle = 45, hjust = 1)# optional: black tick marks
   )
 
 hi.plot 
@@ -295,3 +306,33 @@ head(re)
 plot(gam_mc, select = 2, shade = TRUE, main = "Station random effects")
 qqnorm(resid(gam_mc)); qqline(resid(gam_mc))
 
+#breakpoint analysis
+
+bp <- breakpoints(avg_height ~ Year, data = eca, breaks = 1, h = 0.3)
+eca$Year[bp$breakpoints]
+
+bpb <- breakpoints(avg_height ~ Year, data = ecb, breaks = 1, h = 0.3)
+ecb$Year[bpb$breakpoints]
+
+bpc <- breakpoints(avg_height ~ Year, data = ecc, breaks = 1, h = 0.05)
+ecc$Year[bpc$breakpoints]
+
+mc <- lm(avg_height ~ Year, data = ecc)
+segc <- segmented(mc, seg.Z = ~Year)
+summary(segc)
+plot(segc)
+
+mb <- lm(avg_height ~ Year, data = ecb)
+segb <- segmented(mb, seg.Z = ~Year)
+summary(segb)
+plot(segb)
+
+ma <- lm(avg_height ~ Year, data = eca)
+sega <- segmented(ma, seg.Z = ~Year)
+summary(sega)
+plot(sega)
+
+wa <- lm(avg_height ~ Year, data = woc)
+segwa <- segmented(wa, seg.Z = ~Year)
+summary(segwa)
+plot(segwa)
