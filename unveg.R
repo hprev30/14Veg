@@ -24,6 +24,7 @@ library(bayesplot)
 install.packages('data.table')
 library(data.table)
 library(marginaleffects)
+library(brms) 
 update.packages('data.table')
 
 # =========================================================
@@ -33,6 +34,8 @@ veg_master <- read_excel("O:/all_common/Research/SWMP/BIOMONITORING/EMERGENT VEG
 
 veg_master$Cover <- as.numeric(veg_master$Cover)
 
+
+#taking all plots with NA for unvegetated cover and making them 100% unvegetated
 no.na.veg <- veg_master %>%
   mutate(
     Cover = ifelse(is.na(Cover), 100, Cover),
@@ -40,6 +43,7 @@ no.na.veg <- veg_master %>%
                      "Unvegetated", Species)
   )
 
+#filtering out just unvegetated cover
 unveg <- no.na.veg %>%
   filter(Species == "Unvegetated" & Season == "Fall")
 
@@ -49,8 +53,8 @@ unveg <- no.na.veg %>%
 unveg$Cover <- as.numeric(unveg$Cover)
 unveg$Cover_prop <- unveg$Cover / 100
 
-n <- nrow(unveg)
-unveg$Cover_adj <- (unveg$Cover_prop * (n - 1) + 0.5) / n
+#n <- nrow(unveg)
+#unveg$Cover_adj <- (unveg$Cover_prop * (n - 1) + 0.5) / n
 
 unveg$StationUID <- interaction(unveg$SiteID, unveg$TransectID)
 unveg$PlotUID <- interaction(unveg$SiteID,
@@ -61,12 +65,15 @@ length(unique(unveg$PlotUID))
 # 4. FACTORS + SCALING
 # =========================================================
 unveg$SiteID <- as.factor(unveg$SiteID)
+height_data$SiteID <- as.factor(height_data$SiteID)
+height_data$TransectID <- as.factor(height_data$TransectID)
 unveg$TransectID <- as.factor(unveg$TransectID)
 unveg$distance_f <- as.factor(unveg$Distance)
+height_data$distance_f <- as.factor(height_data$Distance)
 unveg$year_f = as.factor(unveg$Year)
 unveg$year_c = unveg$Year - min(unveg$Year)
-unveg$Year_sc <- scale(unveg$Year)
-unveg$Distance_sc <- scale(unveg$Distance)
+#unveg$Year_sc <- scale(unveg$Year)
+#unveg$Distance_sc <- scale(unveg$Distance)
 
 # =========================================================
 # 5. MODELS
@@ -113,9 +120,6 @@ summary(m4)
 m5 <- update(m4, formula = . ~ . + ar(time = year_c, gr = TransectID, p = 1),                
              control = list(adapt_delta = 0.99))    
 
-m5 <- add_criterion(m5, "loo")    
-
-loo_compare(m4, m5)
 
 m6 <- ordbetareg(
   formula = bf(Cover_prop ~ year_c * distance_f +
@@ -136,8 +140,10 @@ AIC(m0, m1)
 
 m3 = add_criterion(m3, "loo")
 m4 = add_criterion(m4, "loo")
+m5 = add_criterion(m5, "loo")   
 m6 = add_criterion(m6, "loo")
 loo_compare(m3, m4, m6)
+loo_compare(m4, m5)
 # =========================================================
 # 7. DIAGNOSTICS
 # =========================================================
@@ -214,7 +220,7 @@ ggplot(newdat, aes(Year_sc, pred, color = SiteID)) +
 # =========================================================
 # 11. FIGURING OUT DIAGNOSTICS
 # =========================================================
-sim <- simulateResiduals(m1)
+sim <- simulateResiduals(m0)
 
 plot(sim)
 testUniformity(sim)
@@ -244,3 +250,86 @@ Cover_prop ~ poly(Year_sc, 2) + Distance_sc +
 # =========================================================
 
 hist(veg_master$`Maximum Canopy Height`)
+veg_master$`Maximum Canopy Height` = as.numeric(veg_master$`Maximum Canopy Height`)
+
+# Define dominant species per site 
+dom_species <- tibble(
+  SiteID = c("00", "01", "06", "22", "40", "46"), 
+  dominant_species = c("Spartina alterniflora", "Batis maritima", 
+                       "Spartina alterniflora", "Avicennia germinans", 
+                       "Spartina alterniflora", "Juncus roemerianus") ) 
+
+# Filter to only rows where species == site's dominant species 
+height_data <- veg_master |> 
+  rename(canopy_height = `Maximum Canopy Height`) |> # easier to type 
+  left_join(dom_species, by = "SiteID") |> 
+  filter(Species == dominant_species, 
+         !is.na(canopy_height)) 
+
+# Sanity checks 
+nrow(height_data) # how much data are we left with? 
+table(height_data$SiteID, height_data$Distance)# rows per site × distance 
+hist(height_data$canopy_height)
+
+
+
+m_height <- brm(   
+  canopy_height ~ distance_f * dominant_species + (1 | SiteID:TransectID),   
+  data = height_data,   
+  family = gaussian(),   
+  cores = 4, 
+  chains = 4,   
+  iter = 2000, 
+  warmup = 1000,   
+  control = list(adapt_delta = 0.95) 
+  ) 
+
+m_height_add <- brm(   
+  canopy_height ~ distance_f + dominant_species + (1 | SiteID:TransectID),   
+  data = height_data,   
+  family = gaussian(),   
+  cores = 4, 
+  chains = 4,   
+  control = list(adapt_delta = 0.95) 
+  ) 
+
+summary(m_height_add)
+
+summary(m_height)
+
+table(height_data$dominant_species, height_data$distance_f) 
+
+height_data |>   
+  group_by(dominant_species) |>   
+  summarise(n_sites = n_distinct(SiteID),             
+            n_transects = n_distinct(TransectID),             
+            n_obs = n())
+
+height_data_inland <- height_data |>   
+  filter(distance_f != "0") |>   
+  mutate(distance_f = droplevels(distance_f))   # remove the now-empty 0m level 
+
+# Confirm structure 
+table(height_data_inland$dominant_species, height_data_inland$distance_f)
+
+m_height_v2 <- brm(   
+  canopy_height ~ distance_f * dominant_species + (1 | SiteID:TransectID),   
+  data = height_data_inland,   
+  family = gaussian(),   
+  cores = 4, 
+  chains = 4,   
+  control = list(adapt_delta = 0.95) 
+  ) 
+
+summary(m_height_v2)
+
+m_height_site <- brm(   
+  canopy_height ~ distance_f * SiteID + (1 | SiteID:TransectID),   
+  data = height_data_inland,   
+  family = gaussian(),   
+  cores = 4, 
+  chains = 4,   
+  control = list(adapt_delta = 0.95) 
+) 
+
+summary(m_height_site)
